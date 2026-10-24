@@ -71,7 +71,7 @@ const loadDownloads = (): DownloadItem[] => {
     const items = saved ? JSON.parse(saved) as DownloadItem[] : [];
     return items.map((item) => {
       if (item.state === "downloading") return { ...item, state: "cancelled", message: "Download was interrupted when the app closed" };
-      if (item.message?.includes("reading 'invoke'")) return { ...item, message: "Downloads require the installed VidmateAlt app. Open the desktop app to download direct file links." };
+      if (item.message?.includes("reading 'invoke'")) return { ...item, message: "Downloads require the installed VidmateAlt app. Open the desktop app to download." };
       return item;
     });
   } catch {
@@ -135,20 +135,17 @@ function App() {
 
   async function startDownload(downloadUrl: string) {
     if (!isTauri()) {
-      throw new Error("Downloads require the installed VidmateAlt app. Open the desktop app to download direct file links.");
+      throw new Error("Downloads require the installed VidmateAlt app. Open the desktop app to download.");
     }
     const trimmedUrl = downloadUrl.trim();
     let parsedUrl: URL;
     try {
       parsedUrl = new URL(trimmedUrl);
     } catch {
-      throw new Error("Enter a valid direct file URL.");
+      throw new Error("Enter a valid URL.");
     }
     if (!(["http:", "https:"].includes(parsedUrl.protocol))) {
-      throw new Error("Only HTTP and HTTPS file links are supported.");
-    }
-    if (/(^|\.)youtube\.com$|(^|\.)youtu\.be$|(^|\.)youtube-nocookie\.com$/i.test(parsedUrl.hostname)) {
-      throw new Error("YouTube links are for playback only. Enter a direct file URL you are authorized to download.");
+      throw new Error("Only HTTP and HTTPS links are supported.");
     }
     const id = crypto.randomUUID();
     const item: DownloadItem = { id, url: trimmedUrl, name: itemName(trimmedUrl), state: "downloading", received: 0, total: null };
@@ -279,7 +276,7 @@ function App() {
         <button className={`rail-button ${appView === "downloads" && activeView === "queue" ? "active" : ""}`} title="Downloads" onClick={() => openDownloads("queue")}><Download size={19} /></button>
         <button className={`rail-button ${appView === "downloads" && activeView === "library" ? "active" : ""}`} title="Library" onClick={() => openDownloads("library")}><FolderOpen size={19} /></button>
         <button className="rail-button" title="Settings" onClick={() => setNotice("Downloads are saved in your Downloads folder.")}><Settings2 size={19} /></button>
-        <div className="rail-bottom"><button className="rail-button" title="About VidmateAlt" onClick={() => setNotice("VidmateAlt downloads direct file links you provide.")}><CircleHelp size={19} /></button></div>
+        <div className="rail-bottom"><button className="rail-button" title="About VidmateAlt" onClick={() => setNotice("VidmateAlt downloads videos from YouTube, Instagram, and direct file links.")}><CircleHelp size={19} /></button></div>
       </aside>
 
       <section className="workspace">
@@ -322,11 +319,11 @@ function App() {
           <section className="add-section">
             <div className="section-heading"><div><p className="eyebrow">ADD TO YOUR LIBRARY</p><h2>Bring a file in.</h2></div><span className="section-index">01 / INTAKE</span></div>
             <form className="url-form" onSubmit={addDownload}>
-              <div className="url-field"><Link2 size={18} /><input value={url} onChange={(event) => setUrl(event.currentTarget.value)} placeholder="Paste a direct video or file link" aria-label="Direct video or file URL" type="url" required /><button type="button" className="paste-button" onClick={async () => { try { setUrl(await navigator.clipboard.readText()); } catch { setNotice("Clipboard access is unavailable. Paste your link into the field."); } }}>Paste <ChevronDown size={13} /></button></div>
+              <div className="url-field"><Link2 size={18} /><input value={url} onChange={(event) => setUrl(event.currentTarget.value)} placeholder="Paste a YouTube, Instagram, or direct file link" aria-label="Video or file URL" type="url" required /><button type="button" className="paste-button" onClick={async () => { try { setUrl(await navigator.clipboard.readText()); } catch { setNotice("Clipboard access is unavailable. Paste your link into the field."); } }}>Paste <ChevronDown size={13} /></button></div>
               <button className="add-button" type="submit" disabled={!url.trim()}><Plus size={17} /> Add link</button>
             </form>
-            <div className="intake-foot"><span><i className="tiny-check"><Check size={10} /></i> Direct HTTP / HTTPS links</span><span>Files save to <strong>Downloads</strong></span></div>
-                <p className="download-boundary">Direct file links download here. YouTube links are for playback only.</p>
+            <div className="intake-foot"><span><i className="tiny-check"><Check size={10} /></i> YouTube, Instagram &amp; direct links</span><span>Files save to <strong>Downloads</strong></span></div>
+                <p className="download-boundary">Paste a YouTube or Instagram link to download the actual video.</p>
             {notice && <div className="notice">{notice}<button onClick={() => setNotice("")} aria-label="Dismiss"><X size={14} /></button></div>}
           </section>
 
@@ -361,7 +358,7 @@ function App() {
             <label className="dialog-url-label" htmlFor="card-download-url">Direct file URL</label>
             <div className="url-field"><Link2 size={17} /><input id="card-download-url" type="url" value={cardDownloadUrl} onChange={(event) => { setCardDownloadUrl(event.currentTarget.value); setDownloadDialogError(""); }} placeholder="https://example.com/video.mp4" autoFocus required /></div>
             <div className="format-choice"><span>File format</span><strong>Original file</strong></div>
-            <p className="dialog-disclaimer">Use a direct HTTP/HTTPS file link you have permission to save. YouTube links only play in the app; they cannot be downloaded here.</p>
+            <p className="dialog-disclaimer">Use a YouTube, Instagram, or direct HTTP/HTTPS link you have permission to save.</p>
             {downloadDialogError && <p className="dialog-error" role="alert">{downloadDialogError}</p>}
             <div className="dialog-actions"><button type="button" className="dialog-cancel" onClick={closeDownloadDialog}>Cancel</button><button type="submit" className="dialog-submit" disabled={!cardDownloadUrl.trim()}><Download size={15} /> Start download</button></div>
           </form>

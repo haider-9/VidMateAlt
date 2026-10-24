@@ -66,15 +66,36 @@ fn start_download(
     id: String,
     url: String,
 ) -> Result<(), String> {
-    let parsed = url::Url::parse(&url).map_err(|_| "Enter a valid direct file URL".to_string())?;
+    let parsed = url::Url::parse(&url).map_err(|_| "Enter a valid URL".to_string())?;
     if !matches!(parsed.scheme(), "http" | "https") || parsed.host_str().is_none() {
-        return Err("Only direct HTTP or HTTPS file links are supported".to_string());
+        return Err("Only HTTP or HTTPS links are supported".to_string());
     }
 
-    let filename = safe_filename(parsed.path_segments().and_then(|segments| segments.last()).unwrap_or("download"));
+    let host = parsed.host_str().unwrap_or("").to_lowercase();
+    let is_youtube = host.contains("youtube.com") || host == "youtu.be" || host.contains("youtube-nocookie.com");
+    let is_instagram = host.contains("instagram.com") || host.contains("instagr.am");
+
     let cancelled = Arc::new(AtomicBool::new(false));
     manager.active.lock().map_err(|_| "Download manager is unavailable".to_string())?.insert(id.clone(), cancelled.clone());
 
+    if is_youtube || is_instagram {
+        let app_handle = app.clone();
+        let download_id = id.clone();
+        let link = url.clone();
+        tauri::async_runtime::spawn(async move {
+            let result = download_from_extractor(&app_handle, &download_id, &link, cancelled.clone()).await;
+            if let Ok(mut active) = app_handle.state::<DownloadManager>().active.lock() {
+                active.remove(&download_id);
+            }
+            match result {
+                Ok((path, filename)) => { let _ = app_handle.emit("download-finished", DownloadFinished { id: download_id, filename, path: path.to_string_lossy().into_owned() }); }
+                Err(message) => { let _ = app_handle.emit("download-failed", DownloadFailure { id: download_id, message }); }
+            }
+        });
+        return Ok(());
+    }
+
+    let filename = safe_filename(parsed.path_segments().and_then(|segments| segments.last()).unwrap_or("download"));
     tauri::async_runtime::spawn(async move {
         let result = download_file(&app, &id, &url, &filename, cancelled.clone()).await;
         if let Ok(mut active) = app.state::<DownloadManager>().active.lock() {
@@ -104,7 +125,14 @@ async fn download_file(
     filename: &str,
     cancelled: Arc<AtomicBool>,
 ) -> Result<PathBuf, String> {
-    let response = reqwest::Client::new().get(url).send().await.map_err(|error| error.to_string())?;
+    let response = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+        .build()
+        .map_err(|error| error.to_string())?
+        .get(url)
+        .send()
+        .await
+        .map_err(|error| error.to_string())?;
     if !response.status().is_success() {
         return Err(format!("Server responded with {}", response.status()));
     }
@@ -136,6 +164,73 @@ async fn download_file(
     }
     tokio::io::AsyncWriteExt::flush(&mut file).await.map_err(|error| error.to_string())?;
     Ok(path)
+}
+
+async fn download_from_extractor(
+    app: &AppHandle,
+    id: &str,
+    url: &str,
+    cancelled: Arc<AtomicBool>,
+) -> Result<(PathBuf, String), String> {
+    use tokio::process::Command;
+
+    let ytdlp_path = if std::path::Path::new("/home/haider/.local/bin/yt-dlp").exists() {
+        "/home/haider/.local/bin/yt-dlp"
+    } else if std::path::Path::new("/usr/local/bin/yt-dlp").exists() {
+        "/usr/local/bin/yt-dlp"
+    } else {
+        "yt-dlp"
+    };
+
+    let output = Command::new(ytdlp_path)
+        .args([
+            "-f",
+            "best[ext=mp4]/best",
+            "-g",
+            "--no-playlist",
+            url,
+        ])
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run yt-dlp: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Could not extract video: {}", stderr.trim()));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let direct_url = stdout
+        .lines()
+        .find(|l| l.starts_with("http"))
+        .ok_or("No downloadable URL found from extractor")?
+        .trim()
+        .to_string();
+
+    // Get filename from video info
+    let info_output = Command::new(ytdlp_path)
+        .args(["--dump-json", "--no-playlist", url])
+        .output()
+        .await
+        .map_err(|e| format!("Failed to get video info: {}", e))?;
+
+    let filename = if info_output.status.success() {
+        let json: serde_json::Value = serde_json::from_slice(&info_output.stdout)
+            .unwrap_or(serde_json::Value::Null);
+        let title = json["title"].as_str().unwrap_or("video");
+        let ext = json["ext"].as_str().unwrap_or("mp4");
+        let safe_title: String = title
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric() || matches!(c, ' ' | '-' | '_' | '.'))
+            .collect();
+        let safe_title = if safe_title.trim().is_empty() { "video".to_string() } else { safe_title.trim().to_string() };
+        format!("{}.{}", safe_title, ext)
+    } else {
+        "video.mp4".to_string()
+    };
+
+    let safe_name = safe_filename(&filename);
+    download_file(app, id, &direct_url, &safe_name, cancelled).await.map(|p| (p, safe_name))
 }
 
 fn download_directory(app: &AppHandle) -> Result<PathBuf, String> {
