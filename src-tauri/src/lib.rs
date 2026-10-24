@@ -110,7 +110,7 @@ async fn download_file(
     }
 
     let total = response.content_length();
-    let directory = download_directory()?;
+    let directory = download_directory(app)?;
     tokio::fs::create_dir_all(&directory).await.map_err(|error| error.to_string())?;
     let path = unique_path(&directory, filename);
     let mut file = tokio::fs::File::create(&path).await.map_err(|error| error.to_string())?;
@@ -138,9 +138,8 @@ async fn download_file(
     Ok(path)
 }
 
-fn download_directory() -> Result<PathBuf, String> {
-    let home = std::env::var_os("HOME").ok_or_else(|| "Could not locate your home directory".to_string())?;
-    Ok(PathBuf::from(home).join("Downloads"))
+fn download_directory(app: &AppHandle) -> Result<PathBuf, String> {
+    app.path().download_dir().map_err(|error| format!("Could not locate the Downloads folder: {error}"))
 }
 
 fn safe_filename(candidate: &str) -> String {

@@ -1,6 +1,6 @@
 # VidmateAlt
 
-VidmateAlt is a responsive media app with a YouTube subscriptions feed and a download manager for direct HTTP and HTTPS file links. The Videos view can connect a Google account and show recent uploads from subscribed channels. YouTube does not expose its personalized Home recommendations through the official Data API, so this is a Following feed, not your Home feed. Video embeds are for playback; they are not downloaded. In Downloads, paste a direct media or file URL, track progress, cancel active downloads, and browse completed downloads in the local library. Files are saved in your system's `Downloads` folder, and the library list is stored locally in the app.
+VidmateAlt is an Android-first media app with a YouTube subscriptions feed and a download manager for direct HTTP and HTTPS file links. The Videos view can connect a Google account and show recent uploads from subscribed channels. YouTube does not expose its personalized Home recommendations through the official Data API, so this is a Following feed, not your Home feed. Video embeds are for playback; they are not downloaded. In Downloads, paste a direct media or file URL, track progress, cancel active downloads, and browse completed downloads in the local library. Files are saved in the device Downloads folder, and the library list is stored locally in the app.
 
 This app does not extract media links from web pages or third-party streaming platforms. Use direct links to files you have permission to download.
 
@@ -13,20 +13,33 @@ This app does not extract media links from web pages or third-party streaming pl
 
 The app uses OAuth PKCE and a temporary localhost callback. The access token is held in memory only; reconnect after restarting the app. Disconnect clears the current in-app feed. You can also revoke VidmateAlt's access from your Google Account security settings.
 
-## Development
+## Android Development
 
-Requirements: Node.js, npm, Rust, and the system dependencies required by Tauri 2 for your operating system.
+Requirements: Node.js, npm, Rust with Android targets, Android SDK and NDK, and Java 21. The Android project is generated under `src-tauri/gen/android`.
 
 ```sh
 npm install
-npm run tauri dev
+npm run tauri android dev
 ```
 
-For a frontend-only preview, run `npm run dev`. Native download commands are available only inside the Tauri app.
-
-## Build
+Build an arm64 debug APK with:
 
 ```sh
+npm run tauri android build -- --debug --apk --target aarch64
+```
+
+The APK is written to `src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk`. Android build outputs are ignored by Git, so the APK is not included in commits or pushes. To install it with a USB-connected, authorized device, run:
+
+```sh
+adb install -r src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk
+```
+
+For a frontend-only browser preview, run `npm run dev`; native download and account-linking features require the installed Android or desktop app.
+
+## Desktop Development
+
+```sh
+npm run tauri dev
 npm run tauri build
 ```
 
